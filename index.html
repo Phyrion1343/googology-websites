@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>序列展开工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .output {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            overflow-y: auto;
+            max-width: 100%;
+            max-height: 500px;
+        }
+        .expansion-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            white-space: nowrap;
+            min-width: max-content;
+        }
+        .expansion-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .expansion-result {
+            line-height: 1.6;
+        }
+        .clickable-number {
+            cursor: pointer;
+            text-decoration: underline;
+            margin: 0 1px;
+            display: inline-block;
+            transition: none;
+        }
+        .clickable-number-yellow {
+            color: #d97706;
+        }
+        .clickable-number-blue {
+            color: #007bff;
+        }
+        .clickable-number-green {
+            color: #059669;
+        }
+        .clickable-number-red {
+            color: #dc2626;
+            font-weight: bold;
+            background-color: #fef2f2;
+            padding: 1px 3px;
+            border-radius: 3px;
+        }
+        .clickable-number:hover {
+            background-color: #f0f8ff;
+        }
+        .clickable-number-red:hover {
+            background-color: #fecaca;
+        }
+        /* 用于原序列和截取序列的静态数字样式 */
+        .static-number {
+            margin: 0 1px;
+            display: inline-block;
+        }
+        .static-number-red {
+            color: #dc2626;
+            font-weight: bold;
+            background-color: #fef2f2;
+            padding: 1px 3px;
+            border-radius: 3px;
+        }
+        .copy-btn {
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            padding: 2px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 3px;
+            margin: 0;
+        }
+        .copy-btn:hover {
+            background-color: #138496;
+        }
+        .copy-btn:active {
+            background-color: #0e6674;
+        }
+        .copy-success {
+            background-color: #28a745 !important;
+        }
+        .reload-btn {
+            background-color: #6366f1;
+            margin-left: 10px;
+        }
+        .reload-btn:hover {
+            background-color: #4f46e5;
+        }
+        .output::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .output::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .output::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .output::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* —— flexbox 每列：数字/逗号 + 列标 —— */
+        .sequence-container {
+        display: inline-flex;
+        align-items: flex-start;
+        }
+        .sequence-column {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0;
+        box-sizing: border-box;
+        }
+        .column-label {
+        font-size: 10px;
+        color: #888;
+        line-height: 1;
+        height: 12px;
+        margin-top: 2px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        box-sizing: border-box;
+        }
+        /* —— 数字和逗号样式 —— */
+        .static-number, .static-comma,
+        .clickable-number, .comma {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        padding: 1px 1px;  /* 让数字和逗号不太拥挤 */
+        box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PPS 扽西小助手</h1>
+        <label for="sequence">请输入序列（用逗号分隔）：</label>
+        <input type="text" id="sequence" placeholder="例如：0,1,2,3,4" oninput="realTimeExpand()">
+
+        <label for="times">展开次数：</label>
+        <input type="number" id="times" value="3" min="1" oninput="realTimeExpand()">
+
+        <button onclick="reloadPage()" class="reload-btn">重新加载</button>
+
+        <div class="output" id="output"></div>
+    </div>
+
+    <script>
+        let expansionHistory = [];
+        let expansionCounter = 0;
+
+        // 根据层级生成彩色 - 使用不同色调的浅色
+        function getLevelColor(层级) {
+            const 颜色数组 = [
+                '#ffffff',  // 层级0 - 白色
+                '#fff5f5',  // 层级1 - 浅红
+                '#fff8e7',  // 层级2 - 浅橙
+                '#fffbeb',  // 层级3 - 浅黄
+                '#f0fff4',  // 层级4 - 浅绿
+                '#f0f9ff',  // 层级5 - 浅蓝
+                '#faf5ff',  // 层级6 - 浅紫
+                '#fdf2f8',  // 层级7 - 浅粉
+                '#f0fdfa',  // 层级8 - 浅青
+                '#fefce8',  // 层级9 - 浅柠檬
+                '#f8fafc'   // 层级10+ - 浅灰
+            ];
+            
+            if (层级 >= 颜色数组.length) {
+                return 颜色数组[(层级 % (颜色数组.length - 1)) + 1];
+            }
+            
+            return 颜色数组[层级];
+        }
+
+        // 根据层级生成边框颜色
+        function getLevelBorderColor(层级) {
+            const 边框颜色数组 = [
+                '#ccc',     // 层级0
+                '#fecaca',  // 层级1 - 红
+                '#fed7aa',  // 层级2 - 橙
+                '#fde047',  // 层级3 - 黄
+                '#bbf7d0',  // 层级4 - 绿
+                '#bfdbfe',  // 层级5 - 蓝
+                '#e9d5ff',  // 层级6 - 紫
+                '#fbcfe8',  // 层级7 - 粉
+                '#a7f3d0',  // 层级8 - 青
+                '#fef08a',  // 层级9 - 柠檬
+                '#cbd5e1'   // 层级10+ - 灰
+            ];
+            
+            if (层级 >= 边框颜色数组.length) {
+                return 边框颜色数组[(层级 % (边框颜色数组.length - 1)) + 1];
+            }
+            
+            return 边框颜色数组[层级];
+        }
+
+        // 复制到剪切板函数
+        async function copyToClipboard(text, buttonElement) {
+            try {
+                await navigator.clipboard.writeText(text);
+                
+                // 暂时改变按钮样式表示复制成功
+                const originalText = buttonElement.textContent;
+                const originalClass = buttonElement.className;
+                
+                buttonElement.textContent = '已复制';
+                buttonElement.classList.add('copy-success');
+                
+                setTimeout(() => {
+                    buttonElement.textContent = originalText;
+                    buttonElement.className = originalClass;
+                }, 1000);
+                
+            } catch (err) {
+                console.error('复制失败:', err);
+                // 如果现代API失败，尝试旧方法
+                fallbackCopyTextToClipboard(text, buttonElement);
+            }
+        }
+
+        // 备用复制方法（兼容性）
+        function fallbackCopyTextToClipboard(text, buttonElement) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            
+            // 避免在手机上缩放到输入框
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    const originalText = buttonElement.textContent;
+                    const originalClass = buttonElement.className;
+                    
+                    buttonElement.textContent = '已复制';
+                    buttonElement.classList.add('copy-success');
+                    
+                    setTimeout(() => {
+                        buttonElement.textContent = originalText;
+                        buttonElement.className = originalClass;
+                    }, 1000);
+                } else {
+                    console.error('复制命令失败');
+                }
+            } catch (err) {
+                console.error('复制失败:', err);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+
+        // 创建静态序列显示（不可点击，只用于原序列和截取序列）
+        function createStaticSequence(序列数组, 原序列数组) {
+            const htmlParts = [];
+            
+            // 获取原序列的末项值，用于确定哪一项需要标红
+            const 原序列末项值 = 原序列数组.length > 0 ? 原序列数组[原序列数组.length - 1] : null;
+            
+            序列数组.forEach((数字, 索引) => {
+                // 检查是否为"第末项的值"的项（使用1基索引）
+                const 是否为红色高亮项 = 原序列末项值 !== null && 
+                                    原序列末项值 >= 1 && 
+                                    原序列末项值 <= 序列数组.length && 
+                                    索引 === (原序列末项值 - 1);
+                
+                const 样式类 = 是否为红色高亮项 ? 'static-number static-number-red' : 'static-number';
+                
+                htmlParts.push(`<span class="${样式类}">${数字}</span>`);
+                
+                // 添加逗号（最后一个数字不加）
+                if (索引 < 序列数组.length - 1) {
+                    htmlParts.push(',');
+                }
+            });
+            
+            return htmlParts.join('');
+        }
+
+        // 实时展开函数
+        function realTimeExpand() {
+            const 序列 = document.getElementById('sequence').value.trim();
+            const 展开次数 = parseInt(document.getElementById('times').value, 10) || 3;
+
+            if (!序列) {
+                document.getElementById('output').innerHTML = "";
+                return;
+            }
+
+            // 清空历史记录，重新开始
+            expansionHistory = [];
+            expansionCounter = 0;
+            
+            performExpansion(序列, 展开次数, true, null);
+        }
+
+        // 执行展开操作
+        function performExpansion(序列字符串, 展开次数, 是初始展开 = false, 父展开ID = null) {
+            const 序列数组 = 序列字符串.split(',').map(Number);
+            if (!序列数组.length) {
+                return;
+            }
+
+            const {展开结果, 展开详情} = expandSequenceLogic(序列数组, 展开次数);
+            
+            // 计算层级
+            let 层级 = 0;
+            if (!是初始展开 && 父展开ID !== null) {
+                const 父展开 = expansionHistory.find(h => h.id === 父展开ID);
+                if (父展开) {
+                    层级 = 父展开.层级 + 1;
+                }
+            }
+            
+            // 创建展开记录
+            const 展开记录 = {
+                id: ++expansionCounter,
+                原序列: 序列字符串,
+                原序列数组: 序列数组,
+                序列长度: 序列数组.length,
+                结果: 展开结果,
+                展开详情: 展开详情,
+                是初始展开: 是初始展开,
+                创建时间: Date.now(),
+                层级: 层级,
+                父展开ID: 父展开ID
+            };
+            
+            expansionHistory.push(展开记录);
+            updateDisplay();
+            
+            // 如果不是初始展开，滚动到新添加的展开结果
+            if (!是初始展开) {
+                scrollToNewExpansion(展开记录.id);
+            }
+        }
+
+        // 滚动到新展开的结果（同时处理水平和竖直滚动）
+        function scrollToNewExpansion(展开ID) {
+            // 等待DOM更新完成
+            setTimeout(() => {
+                const 新展开元素 = document.querySelector(`[data-expansion-id="${展开ID}"]`);
+                
+                if (新展开元素) {
+                    // 使用 scrollIntoView 方法同时处理水平和竖直滚动
+                    新展开元素.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center',    // 竖直方向：将元素居中显示
+                        inline: 'end'       // 水平方向：将元素的右边界对齐到可视区域的右边界
+                    });
+                }
+            }, 100);
+        }
+
+        // 序列展开逻辑（修改返回值包含展开详情）
+        function expandSequenceLogic(序列数组, 展开次数) {
+            const 序列长度 = 序列数组.length;
+            const 末项 = 序列长度 > 0 ? 序列数组[序列长度 - 1] : null;
+
+            if (末项 === 0) {
+                const 好部 = 序列数组.slice(0, -1);
+                return {
+                    展开结果: 好部,
+                    展开详情: {
+                        好部长度: 好部.length,
+                        展开部分: []
+                    }
+                };
+            }
+
+            const 父项序号 = 末项;
+            let 坏根序号 = null;
+            let 坏根值 = null;
+            let 坏部 = [];
+            let 公差 = 0;
+            let 白根存在 = false;
+
+            if (父项序号 >= 1 && 父项序号 <= 序列长度) {
+                坏根序号 = 父项序号;
+                坏根值 = 序列数组[坏根序号 - 1];
+                坏部 = 序列数组.slice(坏根序号, 序列长度 - 1);
+                公差 = 序列长度 - 坏根序号;
+                白根存在 = 坏部.some(val => val === 坏根值);
+            } else {
+                公差 = 序列长度 - 父项序号;
+            }
+
+            const 好部 = 序列数组.slice(0, -1);
+            let 结果 = 好部.slice();
+            let 展开部分 = [];
+            
+            for (let i = 1; i <= 展开次数; i++) {
+                let 当前展开 = [];
+                
+                if (白根存在) {
+                    结果.push(坏根值);
+                    当前展开.push(坏根值);
+                } else {
+                    结果.push(末项 - 1);
+                    当前展开.push(末项 - 1);
+                }
+
+                const 处理后的坏部 = 坏部.map(val => {
+                    if (val < 末项) {
+                        return val;
+                    } else {
+                        return val + 公差 * i;
+                    }
+                });
+                
+                结果 = 结果.concat(处理后的坏部);
+                当前展开 = 当前展开.concat(处理后的坏部);
+                展开部分.push(当前展开);
+            }
+
+            return {
+                展开结果: 结果,
+                展开详情: {
+                    好部长度: 好部.length,
+                    展开部分: 展开部分
+                }
+            };
+        }
+
+        // 树状排序函数
+        function buildTreeOrder() {
+            const 排序结果 = [];
+            
+            function addNodeAndChildren(nodeId) {
+                const node = expansionHistory.find(h => h.id === nodeId);
+                if (!node) return;
+                
+                排序结果.push(node);
+                
+                const 直接子节点 = expansionHistory
+                    .filter(h => h.父展开ID === nodeId)
+                    .sort((a, b) => {
+                        if (a.序列长度 !== b.序列长度) {
+                            return b.序列长度 - a.序列长度;
+                        }
+                        return a.创建时间 - b.创建时间;
+                    });
+                
+                直接子节点.forEach(子节点 => {
+                    addNodeAndChildren(子节点.id);
+                });
+            }
+            
+            const 原始展开 = expansionHistory.find(h => h.是初始展开);
+            if (原始展开) {
+                addNodeAndChildren(原始展开.id);
+            }
+            
+            return 排序结果;
+        }
+
+        // 更新显示 - 恢复缩进并添加滚动条
+        function updateDisplay() {
+            const outputDiv = document.getElementById('output');
+            let html = '';
+
+            const 排序后的历史 = buildTreeOrder();
+
+            排序后的历史.forEach(记录 => {
+                // 使用动态缩进，每层缩进20px
+                const 缩进像素 = 记录.层级 * 20;
+                const 背景色 = getLevelColor(记录.层级);
+                const 边框色 = getLevelBorderColor(记录.层级);
+                
+                html += `<div class="expansion-item" style="margin-left: ${缩进像素}px; background-color: ${背景色}; border-color: ${边框色};" data-expansion-id="${记录.id}">`;
+                html += `<div class="expansion-title">`;
+                if (记录.是初始展开) {
+                    html += `<span>原序列: ${createStaticSequence(记录.原序列数组, 记录.原序列数组)}</span>`;
+                } else {
+                    html += `<span>截取序列: ${createStaticSequence(记录.原序列数组, 记录.原序列数组)}</span>`;
+                }
+                html += `<button class="copy-btn" onclick="copyToClipboard('${记录.原序列}', this)">复制</button>`;
+                html += `<span style="margin-left: 10px; color: #666; font-size: 12px;">(层级${记录.层级})</span>`;
+                html += `</div>`;
+                html += `<div class="expansion-result">展开结果: ${createClickableSequence(记录.结果, 记录.id, 记录.展开详情, 记录.原序列数组)}</div>`;
+                html += `</div>`;
+            });
+
+            outputDiv.innerHTML = html;
+        }
+
+        // 创建可点击的序列 - 添加蓝绿相间标记和红色高亮（只用于展开结果）
+        function createClickableSequence(序列数组, 父展开ID, 展开详情, 原序列数组) {
+        // 计算需要标红的最后一项索引（0-based）
+        const 最后索引 = 原序列数组.length > 0
+            ? 原序列数组[原序列数组.length - 1] - 1
+            : -1;
+
+        // 开始容器
+        let s = `<div class="sequence-container">`;
+
+        序列数组.forEach((数字, 索引) => {
+            // 决定颜色类
+            let 颜色类 = '';
+            if (索引 === 最后索引) {
+            颜色类 = 'clickable-number-red';
+            } else if (索引 < 展开详情.好部长度) {
+            颜色类 = 'clickable-number-yellow';
+            } else {
+            // 计算这是第几轮展开
+            let pos = 索引 - 展开详情.好部长度;
+            let round = 0, acc = 0;
+            for (let j = 0; j < 展开详情.展开部分.length; j++) {
+                if (pos < acc + 展开详情.展开部分[j].length) {
+                round = j;
+                break;
+                }
+                acc += 展开详情.展开部分[j].length;
+            }
+            颜色类 = (round % 2 === 0)
+                ? 'clickable-number-blue'
+                : 'clickable-number-green';
+            }
+
+            // 数字列
+            s += `<div class="sequence-column">`
+            +  `<span class="clickable-number ${颜色类}" `
+            +      `onclick="onNumberClick([${序列数组.slice(0, 索引 + 1).join(',')}], ${父展开ID})">`
+            +    `${数字}`
+            +  `</span>`
+            +  `<span class="column-label">${索引 + 1}</span>`
+            + `</div>`;
+
+            // 逗号列（除了最后一项）
+            if (索引 < 序列数组.length - 1) {
+            s += `<div class="sequence-column">`
+                +  `<span class="comma">,</span>`
+                +  `<span class="column-label">&nbsp;</span>`
+                + `</div>`;
+            }
+        });
+        // 结束容器
+        s += `</div>`;
+        return s;
+        }
+
+        // 点击数字事件处理
+        function onNumberClick(截断序列, 父展开ID) {
+            const 展开次数 = parseInt(document.getElementById('times').value, 10) || 3;
+            const 序列字符串 = 截断序列.join(',');
+            
+            const 已存在 = expansionHistory.some(记录 => 记录.原序列 === 序列字符串);
+            if (!已存在) {
+                performExpansion(序列字符串, 展开次数, false, 父展开ID);
+            }
+        }
+
+        // 重新加载页面
+        function reloadPage() {
+            // 清空输入框
+            document.getElementById('sequence').value = '';
+            document.getElementById('times').value = 3;
+            
+            // 清空历史记录
+            expansionHistory = [];
+            expansionCounter = 0;
+            
+            // 清空显示
+            document.getElementById('output').innerHTML = "";
+            
+            // 重置滚动位置
+            const outputDiv = document.getElementById('output');
+            outputDiv.scrollLeft = 0;
+            outputDiv.scrollTop = 0;
+            
+            // 焦点回到输入框
+            document.getElementById('sequence').focus();
+        }
+
+        // 页面加载时执行一次实时展开
+        window.onload = function() {
+            realTimeExpand();
+        };
+    </script>
+</body>
+</html>
